@@ -4,6 +4,7 @@
 #include <SDL3/SDL.h>
 #include <stdio.h>
 #include <time.h>
+#include <math.h>
 
 //////////////////////////////////////
 //       Função Facilitadora        // 
@@ -12,26 +13,107 @@
 #include <SDL3/SDL_main.h> 
 
 /////////////////////////////
-//       DEFINIÇões        // 
+//       DEFINIÇÕES        // 
 /////////////////////////////
 #define SCREEN_HEIGHT 720
 #define SCREEN_WIDTH 1280
 #define WINDOW_NAME "Pong"
+#define PLAYER_SPEED 40
 
 //////////////////////////
 //       STRUCTS        // 
 //////////////////////////
+
 typedef struct {
     SDL_Window* window;
     SDL_Renderer* renderer;
-    SDL_FRect rects[3];
 } Game;
 
 typedef struct {
-    float vel_x;
-    float vel_y;
-    float radius;
-} Ball;
+    float x;
+    float y;
+} vec2;
+
+//////////////////////////
+//       CLASSES        // 
+//////////////////////////
+
+class Ball {
+    private:
+        float radius;
+        vec2 vel;
+        vec2 pos;
+    public:
+        void setPos(float x, float y){
+            pos = {x, y};
+        }
+        void setVel(float vel_x, float vel_y){
+            vel = {vel_x, vel_y};
+        }
+        void setPos(vec2 pos){
+            this->pos = pos;
+        }
+        void setVel(vec2 vel){
+            this->vel = vel;
+        }
+        void setRadius(float radius){
+            this->radius = radius;
+        }
+        vec2 getVel(){
+            return vel;
+        }
+        vec2 getPos(){
+            return pos;
+        }
+        float getRadius(){
+            return radius;
+        }
+        float getX(){
+            return pos.x;
+        }
+        float getY(){
+            return pos.y;
+        }
+        
+        void move_ball(Uint64 now);
+
+        void detect_wall_collision();
+
+        void render_ball(SDL_Renderer* renderer);
+
+        Ball(){
+            pos = {50, 50};
+            vel = {1, 1};
+            radius = 30.0;
+        }
+};
+
+
+class Player {
+    private:
+        SDL_FRect body;
+        int type;
+        void setPosY(float y){
+            if(y < 0)
+                body.y = 0;
+            else if(y + body.h > SCREEN_HEIGHT)
+                body.y = SCREEN_HEIGHT - body.h;
+            else
+                body.y = y;
+        }
+    public:
+        void move_player(float y){
+            setPosY(body.y - y);
+        }
+        SDL_FRect getBody(){
+            return body;
+        }
+        Player(int type){
+            this->type = type;
+            if(type == 1) body = {70, 200, 25, 300};
+            else body = {SCREEN_WIDTH - 70, 200, 25, 300};
+        }
+};
 
 //////////////////////////////////////
 //       Declarações globais        // 
@@ -40,7 +122,6 @@ typedef struct {
 Game game = {
     .window = NULL,
     .renderer = NULL,
-    .rects = {0}
 };
 
 SDL_Color White = {
@@ -57,7 +138,10 @@ SDL_Color Black = {
     .a = SDL_ALPHA_OPAQUE
 };
 
-Ball ball = {1, 1, 10};
+Ball ballObj;
+
+Player p1(1);
+Player p2(2);
 
 Uint64 old_now = 0;
 
@@ -95,33 +179,14 @@ int init(Game* game){
     return 0;
 }
 
-void set_ball_pos(float x, float y){
-
-    game.rects[0] = (SDL_FRect) {
-        .x = x,
-        .y = y,
-        .w = 100,
-        .h = 100
-    };
-
-}
-
 void draw_everything(){
 
+    SDL_FRect rects[2] = { p1.getBody(), p2.getBody()};
+
     SDL_SetRenderDrawColor(game.renderer, Black.r, Black.g, Black.b, Black.a);
-    SDL_RenderFillRect(game.renderer, &game.rects[0]);
-
-}
-
-void update_ball_pos(Uint64 now, float vel_x, float vel_y){
-
-    float new_x;
-    float new_y;
-
-    new_x = game.rects[0].x + (vel_x * (now - old_now));
-    new_y = game.rects[0].y + (vel_y * (now - old_now));
-    game.rects[0].x = new_x;
-    game.rects[0].y = new_y;
+    ballObj.render_ball(game.renderer);
+    SDL_RenderFillRect(game.renderer, &rects[0]);
+    SDL_RenderFillRect(game.renderer, &rects[1]);
 
 }
 
@@ -130,29 +195,77 @@ void draw_canvas(){
     SDL_RenderClear(game.renderer);
 }
 
-void detect_collision() {
+void rumble(int speed){
+    const bool* keys = SDL_GetKeyboardState(NULL);
 
-    if(game.rects[0].y < 0){
-        game.rects[0].y += (game.rects[0].y * -1);
-        ball.vel_y *= -1;
-    }
+    if(keys[SDL_SCANCODE_W])
+        p1.move_player(+speed);
 
-    if(game.rects[0].x + game.rects[0].w >= SCREEN_WIDTH){
-        game.rects[0].x -= ((game.rects[0].x + game.rects[0].w) - SCREEN_WIDTH);
-        ball.vel_x *= -1;
-    }
+    if(keys[SDL_SCANCODE_S])
+        p1.move_player(-speed);
 
-    if(game.rects[0].x < 0){
-        game.rects[0].x += (game.rects[0].x * -1);
-        ball.vel_x *= -1;
-    }
+    if(keys[SDL_SCANCODE_UP])
+        p2.move_player(+speed);
 
-    if(game.rects[0].y + game.rects[0].h >= SCREEN_HEIGHT){
-        game.rects[0].y -= ((game.rects[0].y + game.rects[0].h) - SCREEN_HEIGHT);
-        ball.vel_y *= -1;
-    }
+    if(keys[SDL_SCANCODE_DOWN])
+        p2.move_player(-speed);
 }
 
+
+//////////////////////////////////////////
+//       FUNÇÕES DAS CLASSE BALL        // 
+//////////////////////////////////////////
+
+void Ball::detect_wall_collision() {
+
+    if(pos.x < 0){
+        pos.x = 0;
+        vel.x *= -1;
+    }
+
+    if(pos.x + radius * 2 > SCREEN_WIDTH){
+        pos.x = SCREEN_WIDTH - radius * 2;
+        vel.x *= -1;
+    }
+
+    if(pos.y < 0){
+        pos.y = 0;
+        vel.y *= -1;
+    }
+
+    if(pos.y + radius * 2 > SCREEN_HEIGHT){
+        pos.y = SCREEN_HEIGHT - radius * 2;
+        vel.y *= -1;
+    }
+
+}
+
+void Ball::move_ball(Uint64 now){
+
+    pos.x = pos.x + (vel.x * (now - old_now));
+    pos.y = pos.y + (vel.y * (now - old_now));
+
+}
+
+void Ball::render_ball(SDL_Renderer* renderer){
+
+    SDL_FRect pixel {pos.x, pos.y, 5, 5};
+
+    int a = pos.x + radius;
+    int b = pos.y + radius;
+
+
+    for(int x = pos.x; x <= pos.x + (radius * 2); x++){
+        for(int y = pos.y; y <= pos.y + (radius * 2); y++){
+            if(sqrt(pow(x - a, 2) + pow(y - b, 2)) <= radius){
+                pixel.x = x;
+                pixel.y = y;
+                SDL_RenderFillRect(renderer, &pixel);
+            }
+        }
+    }
+
+}
 
 ////////////////////////////////////////
 //       FUNÇÕES MAIN CALLBACK        // 
@@ -170,8 +283,8 @@ SDL_AppResult SDL_AppIterate(void *appstate){
     const Uint64 now = SDL_GetTicks();   
 
     draw_canvas();
-    detect_collision();
-    update_ball_pos(now, ball.vel_x, ball.vel_y);
+    ballObj.move_ball(now);
+    ballObj.detect_wall_collision();
     draw_everything();
     SDL_RenderPresent(game.renderer);
 
@@ -185,7 +298,10 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
     switch(event->type) {
         case SDL_EVENT_QUIT: return SDL_APP_SUCCESS; break;
 
-        case SDL_EVENT_MOUSE_BUTTON_DOWN:set_ball_pos(event->button.x, event->button.y);break;
+        case SDL_EVENT_MOUSE_BUTTON_DOWN: ballObj.setPos(event->button.x, event->button.y); break;
+
+        case SDL_EVENT_KEY_DOWN: rumble(PLAYER_SPEED);
+        break;
 
         default: return SDL_APP_CONTINUE; 
     }
