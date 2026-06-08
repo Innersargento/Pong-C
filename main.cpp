@@ -2,6 +2,8 @@
 //       Include        // 
 //////////////////////////
 #include <SDL3/SDL.h>
+#include <iostream>
+#include <initializer_list>
 #include <stdio.h>
 #include <time.h>
 #include <math.h>
@@ -18,7 +20,7 @@
 #define SCREEN_HEIGHT 720
 #define SCREEN_WIDTH 1280
 #define WINDOW_NAME "Pong"
-#define PLAYER_SPEED 40
+#define PLAYER_SPEED 60
 
 //////////////////////////
 //       STRUCTS        // 
@@ -37,6 +39,8 @@ typedef struct {
 //////////////////////////
 //       CLASSES        // 
 //////////////////////////
+
+class Player;
 
 class Ball {
     private:
@@ -80,6 +84,8 @@ class Ball {
         void detect_wall_collision();
 
         void render_ball(SDL_Renderer* renderer);
+
+        void detect_object_collision(std::initializer_list<Player*> players);
 
         Ball(){
             pos = {50, 50};
@@ -138,10 +144,9 @@ SDL_Color Black = {
     .a = SDL_ALPHA_OPAQUE
 };
 
-Ball ballObj;
-
 Player p1(1);
 Player p2(2);
+Ball ballObj;
 
 Uint64 old_now = 0;
 
@@ -182,11 +187,13 @@ int init(Game* game){
 void draw_everything(){
 
     SDL_FRect rects[2] = { p1.getBody(), p2.getBody()};
+    SDL_FRect linha = {SCREEN_WIDTH/2, 0, 5, SCREEN_HEIGHT};
 
     SDL_SetRenderDrawColor(game.renderer, Black.r, Black.g, Black.b, Black.a);
     ballObj.render_ball(game.renderer);
     SDL_RenderFillRect(game.renderer, &rects[0]);
     SDL_RenderFillRect(game.renderer, &rects[1]);
+    SDL_RenderFillRect(game.renderer, &linha);
 
 }
 
@@ -267,6 +274,19 @@ void Ball::render_ball(SDL_Renderer* renderer){
 
 }
 
+void Ball::detect_object_collision(std::initializer_list<Player*> players){
+
+    for(Player* player : players){
+        if(pos.x               <=         player->getBody().x + player->getBody().w && //
+           pos.x + (radius*2)  >=         player->getBody().x && 
+           pos.y + (radius*2)  >          player->getBody().y && 
+           pos.y               <          player->getBody().y + player->getBody().h) 
+        {
+            vel.x *= -1;
+        }
+    }
+}
+
 ////////////////////////////////////////
 //       FUNÇÕES MAIN CALLBACK        // 
 ////////////////////////////////////////
@@ -285,6 +305,7 @@ SDL_AppResult SDL_AppIterate(void *appstate){
     draw_canvas();
     ballObj.move_ball(now);
     ballObj.detect_wall_collision();
+    ballObj.detect_object_collision({&p1, &p2});
     draw_everything();
     SDL_RenderPresent(game.renderer);
 
